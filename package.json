@@ -1,0 +1,12 @@
+{
+  "name": "mixarx-signaling-server",
+  "version": "1.0.0",
+  "description": "Signaling server for MIXArx P2P messenger",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
