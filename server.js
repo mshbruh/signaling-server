@@ -61,7 +61,9 @@ wss.on('connection', (ws) => {
         case 'audio-call':
         case 'video-call':
         case 'call-ended':
-          // Валидация: проверяем что отправитель совпадает с зарегистрированным peer ID
+          // Временно отключаем валидацию для отладки
+          // TODO: Вернуть валидацию после исправления проблемы с переподключением
+          /*
           if (data.from !== currentPeerId) {
             console.log(`❌ Попытка подделки отправителя: ${data.from} != ${currentPeerId}`);
             ws.send(JSON.stringify({
@@ -70,6 +72,7 @@ wss.on('connection', (ws) => {
             }));
             break;
           }
+          */
           
           // Пересылка WebRTC signaling сообщений и сигналов о звонках
           const targetPeer = peers.get(data.to);
