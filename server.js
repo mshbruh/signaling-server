@@ -27,7 +27,23 @@ wss.on('connection', (ws) => {
       switch (data.type) {
         case 'register':
           // Регистрация пира
-          currentPeerId = data.peerId;
+          const newPeerId = data.peerId;
+          
+          // Если этот peer ID уже зарегистрирован на другом соединении, закрываем старое
+          if (peers.has(newPeerId) && peers.get(newPeerId) !== ws) {
+            console.log(`⚠️  Peer ID ${newPeerId} уже зарегистрирован, закрываем старое соединение`);
+            const oldWs = peers.get(newPeerId);
+            oldWs.close();
+            peers.delete(newPeerId);
+          }
+          
+          // Если это соединение уже было зарегистрировано под другим peer ID, удаляем старую регистрацию
+          if (currentPeerId && currentPeerId !== newPeerId) {
+            console.log(`⚠️  Соединение перерегистрируется: ${currentPeerId} -> ${newPeerId}`);
+            peers.delete(currentPeerId);
+          }
+          
+          currentPeerId = newPeerId;
           peers.set(currentPeerId, ws);
           console.log(`👤 Зарегистрирован пир: ${currentPeerId}`);
           console.log(`📊 Всего пиров онлайн: ${peers.size}`);
