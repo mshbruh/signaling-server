@@ -16,8 +16,19 @@ console.log(`🚀 MIXArx Signaling Server запущен на порту ${PORT}
 
 wss.on('connection', (ws) => {
   let currentPeerId = null;
+  let heartbeatInterval = null;
 
   console.log('✅ Новое подключение');
+  
+  // Запускаем heartbeat каждые 30 секунд для поддержания соединения
+  heartbeatInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'heartbeat',
+        timestamp: Date.now()
+      }));
+    }
+  }, 30000);
 
   ws.on('message', (message) => {
     try {
@@ -119,6 +130,16 @@ wss.on('connection', (ws) => {
           }
           break;
 
+        case 'keep-alive':
+          // Keep-alive от клиента для предотвращения засыпания сервера
+          console.log(`💓 Keep-alive от ${data.peerId || currentPeerId} (timestamp: ${data.timestamp})`);
+          ws.send(JSON.stringify({
+            type: 'keep-alive-ack',
+            timestamp: Date.now(),
+            serverTime: new Date().toISOString()
+          }));
+          break;
+
         case 'username-register':
           // Регистрация username
           const { peerId, username, name } = data;
@@ -132,15 +153,33 @@ wss.on('connection', (ws) => {
             break;
           }
 
-          // Проверяем что username не занят
-          if (usernameMap.has(username) && usernameMap.get(username) !== peerId) {
-            ws.send(JSON.stringify({
-              type: 'username-register-response',
-              success: false,
-              message: 'Username уже занят'
-            }));
-            console.log(`❌ Username @${username} уже занят`);
-            break;
+          // ИСПРАВЛЕНО: Проверяем что username не занят ДРУГИМ пиром
+          const existingPeerId = usernameMap.get(username);
+          if (existingPeerId && existingPeerId !== peerId) {
+            // Проверяем, онлайн ли пир с этим username
+            const existingPeer = peers.get(existingPeerId);
+            if (existingPeer && existingPeer.readyState === WebSocket.OPEN) {
+              // Пир онлайн, username действительно занят
+              ws.send(JSON.stringify({
+                type: 'username-register-response',
+                success: false,
+                message: `Username @${username} уже занят другим активным пользователем`
+              }));
+              console.log(`❌ Username @${username} уже занят пиром ${existingPeerId}`);
+              break;
+            } else {
+              // Пир оффлайн, освобождаем username
+              console.log(`🔄 Username @${username} был занят оффлайн пиром ${existingPeerId}, освобождаем`);
+              usernameMap.delete(username);
+              userProfiles.delete(existingPeerId);
+            }
+          }
+
+          // ИСПРАВЛЕНО: Если у этого peer ID уже был другой username, удаляем старый
+          const oldProfile = userProfiles.get(peerId);
+          if (oldProfile && oldProfile.username && oldProfile.username !== username) {
+            console.log(`🔄 Peer ${peerId} меняет username: @${oldProfile.username} -> @${username}`);
+            usernameMap.delete(oldProfile.username);
           }
 
           // Регистрируем
@@ -205,8 +244,26 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    // Останавливаем heartbeat
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+    
     if (currentPeerId) {
       peers.delete(currentPeerId);
+      
+      // ИСПРАВЛЕНО: Очищаем username маппинг при отключении
+      const profile = userProfiles.get(currentPeerId);
+      if (profile && profile.username) {
+        // Удаляем username только если он принадлежит этому peer ID
+        if (usernameMap.get(profile.username) === currentPeerId) {
+          usernameMap.delete(profile.username);
+          console.log(`🗑️ Удален username: @${profile.username}`);
+        }
+      }
+      userProfiles.delete(currentPeerId);
+      
       console.log(`👋 Пир отключился: ${currentPeerId}`);
       console.log(`📊 Осталось пиров: ${peers.size}`);
     }
